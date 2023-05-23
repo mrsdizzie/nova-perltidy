@@ -1,0 +1,15 @@
+{
+  "name": "nova-perltidy",
+  "version": "1.0.0",
+  "description": "Perltidy extension for Nova text editor",
+  "author": "Isla W",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mrsdizzie/nova-perltidy/issues"
+  },
+  "homepage": "https://github.com/mrsdizzie/nova-perltidy",
+  "devDependencies": {
+    "eslint": "^8.41.0",
+    "eslint-plugin-nova": "^1.7.0"
+  }
+}

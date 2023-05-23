@@ -1,0 +1,73 @@
+{
+  "identifier": "com.mrsdizzie.perltidy",
+  "name": "Perltidy",
+  "organization": "Isla Waters",
+  "description": "Format perl files with perltidy",
+  "version": "1.0",
+  "categories": ["commands", "formatters"],
+  "repository": "https://github.com/mrsdizzie/nova-perltidy",
+  "bugs": "https://github.com/mrsdizzie/nova-perltidy/issues",
+
+  "main": "main.js",
+
+  "entitlements": {
+    "process": true
+  },
+
+  "activationEvents": ["onLanguage:perl"],
+
+  "commands": {
+    "editor": [
+      {
+        "title": "Perltidy",
+        "command": "perltidy.run",
+        "shortcut": "shift-option-t",
+        "when": "editorHasFocus",
+        "filters": {
+          "syntaxes": ["perl"]
+        }
+      }
+    ],
+    "command-palette": [
+      {
+        "title": "Format using Perltidy",
+        "paletteTitle": "perltidy",
+        "command": "perltidy.run",
+        "when": "editorSyntax == 'perl'",
+        "filters": {
+          "syntaxes": ["perl"]
+        }
+      }
+    ]
+  },
+
+  "config": [
+    {
+      "title": "perltidy Preferences",
+      "description": "Configure perltidy behaviors",
+      "type": "section",
+      "children": [
+        {
+          "key": "com.mrsdizzie.perltidyRunOnSave",
+          "title": "Run on save",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "com.mrsdizzie.perltidyExecPath",
+          "title": "Executable Path",
+          "type": "path",
+          "description": "Manually set the fully qualified path for the perltidy executable.",
+          "placeholder": "/opt/homebrew/bin/perltidy"
+        },
+        {
+          "key": "com.mrsdizzie.perltidyArgs",
+          "title": "CLI arguments",
+          "description": "Use `perltidy --help` for a full list of arguments. Printing to stdin and stdout is required for modifying the current document in place and generating issues. Any options that disable those will alter the behavior of this extension",
+          "type": "string",
+          "placeholder": "--perl-best-practices"
+        }
+      ]
+    }
+  ]
+}
