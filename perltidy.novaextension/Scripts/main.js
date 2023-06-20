@@ -38,12 +38,15 @@ exports.activate = function () {
     tidy(workspace);
   });
 
-  nova.workspace.activeTextEditor.onWillSave(async (editor) => {
-    if (formatOnSave) {
-      tidy(editor);
-    }
-    return "";
+  nova.workspace.onDidAddTextEditor((editor) => {
+    editor.onWillSave(async (editor) => {
+      if (formatOnSave) {
+        tidy(editor);
+      }
+      return "";
+    });
   });
+
 };
 
 exports.deactivate = function () {
