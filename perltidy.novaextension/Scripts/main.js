@@ -40,6 +40,7 @@ exports.activate = function () {
 
   nova.workspace.onDidAddTextEditor((editor) => {
     editor.onWillSave(async (editor) => {
+     if (!editor.document.syntax.includes("perl")) return;
       if (formatOnSave) {
         tidy(editor);
       }

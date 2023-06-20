@@ -1,3 +1,7 @@
+## Version 1.3
+
+Support multiple perl syntax in Nova
+
 ## Version 1.2
 
 Bugfix: use onDidAddTextEditor
