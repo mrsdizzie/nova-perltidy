@@ -1,7 +1,8 @@
 let commandRegister = null;
-let perltidyExecutable = "";
-let perltidyArgs = "";
-let formatOnSave = false;
+let perltidyExecutable = nova.config.get("com.mrsdizzie.perltidyExecPath");
+let perltidyArgs = nova.config.get("com.mrsdizzie.perltidyArgs");
+let formatOnSave = nova.config.get("com.mrsdizzie.perltidyRunOnSave");
+
 let pertidyIssueCollection = new IssueCollection("perltidy");
 
 const notify = (body) => {
