@@ -3,7 +3,7 @@
   "name": "Perltidy",
   "organization": "Isla Waters",
   "description": "Format perl files with perltidy",
-  "version": "1.4",
+  "version": "1.5",
   "categories": ["commands", "formatters"],
   "repository": "https://github.com/mrsdizzie/nova-perltidy",
   "bugs": "https://github.com/mrsdizzie/nova-perltidy/issues",
@@ -19,28 +19,16 @@
   "commands": {
     "editor": [
       {
-        "title": "Perltidy",
+        "title": "Format with Perltidy",
         "command": "perltidy.run",
         "shortcut": "shift-option-t",
         "when": "editorHasFocus",
         "filters": {
-          "syntaxes": ["perl"]
+          "syntaxes": ["perl", "perl+treesitter"]
         }
       }
     ],
-    "command-palette": [
-      {
-        "title": "Format using Perltidy",
-        "paletteTitle": "perltidy",
-        "command": "perltidy.run",
-        "when": "editorSyntax == 'perl'",
-        "filters": {
-          "syntaxes": ["perl"]
-        }
-      }
-    ]
   },
-
   "config": [
     {
       "title": "perltidy Preferences",

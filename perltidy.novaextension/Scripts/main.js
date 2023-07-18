@@ -48,7 +48,6 @@ exports.activate = function () {
 
   nova.workspace.onDidAddTextEditor((editor) => {
     editor.onWillSave((editor) => {
-      if (!editor.document.syntax.includes("perl")) return;
       if (! formatOnSave) return;
 
       const documentSpan = new Range(0, editor.document.length);
@@ -79,8 +78,6 @@ function tidy(workspace) {
   let isSelection = false;
 
   if (currentEditor.selectedText) {
-    // Don't add a newline at the end of a selection
-    parsedPerltidyArgs.push("-natnl");
     isSelection = true;
     unformattedText = currentEditor.selectedText;
     rangeToReplace = currentEditor.selectedRange;
@@ -110,6 +107,7 @@ const formatText = (unformattedText, isSelection = false) => {
 
   const localPerltidyArgs = [...parsedPerltidyArgs];
   if (isSelection) {
+    // Don't add a newline at the end of a selection
     localPerltidyArgs.push("-natnl");
   }
 
@@ -142,6 +140,7 @@ const formatText = (unformattedText, isSelection = false) => {
 }
 
 function applyFormattingAndProcessErrors(editor, rangeToReplace, unformattedText, isSelection = false) {
+  if (!editor.document.syntax.includes("perl")) return;
   return formatText(unformattedText, isSelection)
     .then((formattedText) => {
       editor.edit((edit) => edit.replace(rangeToReplace, formattedText));

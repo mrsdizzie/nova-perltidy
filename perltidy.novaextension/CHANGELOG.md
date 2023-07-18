@@ -1,3 +1,7 @@
+## Version 1.5
+
+Remove command-palette option in favor of the single Editor menu option which also shows up in the command palette.
+
 ## Version 1.4
 
 Return a promise when running perltidy to better integrate with onWillSave
