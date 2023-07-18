@@ -27,7 +27,7 @@
           "syntaxes": ["perl", "perl+treesitter"]
         }
       }
-    ],
+    ]
   },
   "config": [
     {
