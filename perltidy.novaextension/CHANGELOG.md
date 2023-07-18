@@ -1,3 +1,7 @@
+## Version 1.4
+
+Return a promise when running perltidy to better integrate with onWillSave
+
 ## Version 1.3
 
 Support multiple perl syntax in Nova

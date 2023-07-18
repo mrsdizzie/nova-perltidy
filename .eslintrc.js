@@ -11,5 +11,6 @@ module.exports = {
   rules: {
     "no-var": "error",
     "no-regex-spaces": "error",
+    "prefer-const": "error"
   },
 };

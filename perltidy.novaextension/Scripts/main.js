@@ -3,30 +3,38 @@ let perltidyExecutable = nova.config.get("com.mrsdizzie.perltidyExecPath");
 let perltidyArgs = nova.config.get("com.mrsdizzie.perltidyArgs");
 let formatOnSave = nova.config.get("com.mrsdizzie.perltidyRunOnSave");
 
-let pertidyIssueCollection = new IssueCollection("perltidy");
+let parsedPerltidyArgs = [];
+if (perltidyArgs) {
+  parsedPerltidyArgs = perltidyArgs.split(" ");
+} else {
+  // print to stderr (for issue capture) if no default is set
+  parsedPerltidyArgs.push("-se");
+}
+
+const pertidyIssueCollection = new IssueCollection("perltidy");
 
 const notify = (body) => {
-  let request = new NotificationRequest("perltidy");
+  const request = new NotificationRequest("perltidy");
   request.title = nova.localize("perltidy");
   request.body = nova.localize(body);
   nova.notifications.add(request);
 };
 
-let observablePerltidyExecPath = nova.config.observe(
+const observablePerltidyExecPath = nova.config.observe(
   "com.mrsdizzie.perltidyExecPath",
   (newPerltidyExecutable) => {
     perltidyExecutable = newPerltidyExecutable;
   }
 );
 
-let observablePerltidyArgs = nova.config.observe(
+const observablePerltidyArgs = nova.config.observe(
   "com.mrsdizzie.perltidyArgs",
   (newPerltidyArgs) => {
     perltidyArgs = newPerltidyArgs;
   }
 );
 
-let observableFormatOnSave = nova.config.observe(
+const observableFormatOnSave = nova.config.observe(
   "com.mrsdizzie.perltidyRunOnSave",
   (newValue) => {
     formatOnSave = newValue ? true : false;
@@ -39,16 +47,20 @@ exports.activate = function () {
   });
 
   nova.workspace.onDidAddTextEditor((editor) => {
-    editor.onWillSave(async (editor) => {
-     if (!editor.document.syntax.includes("perl")) return;
-      if (formatOnSave) {
-        tidy(editor);
-      }
-      return "";
+    editor.onWillSave((editor) => {
+      if (!editor.document.syntax.includes("perl")) return;
+      if (! formatOnSave) return;
+
+      const documentSpan = new Range(0, editor.document.length);
+      const unformattedText = editor.document.getTextInRange(documentSpan);
+
+      return applyFormattingAndProcessErrors(editor, documentSpan, unformattedText);
     });
   });
 
 };
+
+
 
 exports.deactivate = function () {
   observablePerltidyExecPath && observablePerltidyExecPath.dispose();
@@ -60,235 +72,268 @@ exports.deactivate = function () {
 
 function tidy(workspace) {
   // If not set, we are run from the editor menu which has a slightly different context
-  let currentEditor = workspace.activeTextEditor || workspace;
+  const currentEditor = workspace.activeTextEditor || workspace;
 
-  if (!perltidyExecutable) {
-    nova.workspace.showErrorMessage("Configure perltidy before running");
-    return;
-  }
-
-  let parsedPerltidyArgs = [];
-  if (perltidyArgs) {
-    parsedPerltidyArgs = perltidyArgs.split(" ");
-  } else {
-    // print to stderr (for issue capture) if no default is set
-    parsedPerltidyArgs.push("-se");
-  }
-
-  let text = "";
-  let errorText = "";
-  let textToTidy = "";
+  let unformattedText = "";
   let rangeToReplace = null;
+  let isSelection = false;
 
   if (currentEditor.selectedText) {
     // Don't add a newline at the end of a selection
     parsedPerltidyArgs.push("-natnl");
-    textToTidy = currentEditor.selectedText;
+    isSelection = true;
+    unformattedText = currentEditor.selectedText;
     rangeToReplace = currentEditor.selectedRange;
   } else {
     rangeToReplace = new Range(0, currentEditor.document.length);
-    textToTidy = currentEditor.document.getTextInRange(rangeToReplace);
+    unformattedText = currentEditor.document.getTextInRange(rangeToReplace);
   }
 
-  try {
-    let p = new Process(perltidyExecutable, {
-      args: parsedPerltidyArgs,
-    });
+  return applyFormattingAndProcessErrors(currentEditor, rangeToReplace, unformattedText, isSelection);
+}
 
-    // Send contents of editor to perltidy directly via STDIN rather than saving the file first
-    const writer = p.stdin.getWriter();
+const formatText = (unformattedText, isSelection = false) => {
+  if (!perltidyExecutable) {
+    nova.workspace.showErrorMessage("Configure perltidy before running");
+    return;
+  }
+  const writeToStdin = (process, unformattedText) => {
+    const writer = process.stdin.getWriter();
     writer.ready.then(() => {
-      writer.write(textToTidy);
+      writer.write(unformattedText);
       writer.close();
     });
+  }
 
-    p.onStderr(function (line) {
-      errorText = errorText + line;
-    });
+  const collectOutputText = (stdout, buffer) => (buffer.stdout += stdout);
+  const collectErrorText = (stderr, buffer) => (buffer.stderr += stderr);
 
-    p.onStdout(function (line) {
-      text = text + line;
-    });
+  const localPerltidyArgs = [...parsedPerltidyArgs];
+  if (isSelection) {
+    localPerltidyArgs.push("-natnl");
+  }
 
-    p.onDidExit(function (exitStatus) {
-      if (exitStatus == 0) {
-        currentEditor.edit((edit) => {
-          edit.replace(rangeToReplace, text);
-        });
-        // clear all issues and notifications on successful format
-        pertidyIssueCollection.clear();
-        nova.notifications.cancel("perltidy");
-      } else {
-        let issues = [];
-        let errors = splitErrors(errorText);
-        errors.forEach((error) => {
-          let issue = createIssueFromError(error, text);
-          if (issue && issue.line) {
-            issues.push(issue);
-          }
-        });
-        if (issues) {
-          pertidyIssueCollection.set(currentEditor.document.uri, issues);
-          notify("Error while formatting, check issues pane");
+  return new Promise((resolve, reject) => {
+    try {
+      const process = new Process(perltidyExecutable, {
+        args: localPerltidyArgs,
+      });
+      const buffer = { stdout: "", stderr: "" };
+
+      process.onStdout((stdout) => collectOutputText(stdout, buffer));
+      process.onStderr((stderr) => collectErrorText(stderr, buffer));
+      process.onDidExit((status) => {
+        if (status === 0) {
+          resolve(buffer.stdout);
+        } else {
+          reject({
+            stderr: buffer.stderr,
+            stdout: buffer.stdout
+          });
         }
+      });
+
+      writeToStdin(process, unformattedText);
+      process.start();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function applyFormattingAndProcessErrors(editor, rangeToReplace, unformattedText, isSelection = false) {
+  return formatText(unformattedText, isSelection)
+    .then((formattedText) => {
+      editor.edit((edit) => edit.replace(rangeToReplace, formattedText));
+      IssueManager.clearIssues();
+    })
+    .catch((error) => {
+      const issues = IssueManager.generate(error.stderr, error.stdout);
+      if (issues) {
+        IssueManager.addIssues(editor.document.uri, issues);
+      }
+    });
+}
+
+
+const IssueManager = {
+
+  collection: new IssueCollection("perltidy"),
+
+  generate: function(errorText, stdin) {
+    const issues = [];
+    const errors = this.splitErrors(errorText);
+    errors.forEach((error) => {
+      const issue = this.createFromError(error, stdin);
+      if (issue && issue.line) {
+        issues.push(issue);
       }
     });
 
-    p.start();
-  } catch (err) {
-    nova.workspace.showErrorMessage("Error running perltidy process.");
-  }
-}
+    return issues;
+  },
 
-function getContentsFromLine(lineNum, text) {
-  let eol = nova.workspace.activeTextEditor.document.eol || "\n";
-  let line = text.split(eol)[lineNum - 1];
-  return line;
-}
+  getContentsFromLine: function(lineNum, text) {
+    const eol = nova.workspace.activeTextEditor.document.eol || "\n";
+    const line = text.split(eol)[lineNum - 1];
+    return line;
+  },
 
-function createIssueFromError(errorText, text) {
-  // these errors aren't helpful don't create issues for them
-  if (errorText.includes("To save a full .LOG")) {
-    return null;
-  }
-
-  let issue = new Issue();
-
-  issue.message = "";
-  issue.source = "perltidy";
-  issue.severity = IssueSeverity.Error;
-
-  let lines = errorText.split("\n");
-  let offset = 0;
-  let lineNumberOffset = 0;
-  let ellipseOffset = 0;
-  let lineNumber = null;
-  let lineNumberRegex = /^\s*(\d+):/s;
-  let truncatedLeadingErrorLineRegex = /^\s*\.\.\.\s/;
-  let truncatedTrailingErrorLineRegex = /\s*\.\.\.$/;
-  let onlyDashesAndCaretRegex = /^\s*[-]+[\^]$/;
-  let onlyCaretRegex = /^[\s^]+$/;
-
-  for (let i = 0; i < lines.length; i++) {
-    // If there is no : this is not from perltidy and probably a perl warning about something unrelated
-    if (!lines[i].includes(":")) {
-      continue;
-    }
-    // not helpful, usually after a single line has already given 2 errors
-    if (lines[i].includes("Giving up after error")) {
+   createFromError: function(errorText, text) {
+    // these errors aren't helpful don't create issues for them
+    if (errorText.includes("To save a full .LOG")) {
       return null;
     }
 
-    // remove filename from error lines
-    let line = lines[i].replace("<stdin>:", "");
+    const issue = new Issue();
 
-    // remove line numbers
-    line = line.replace(lineNumberRegex, function (match, group1) {
-      lineNumber = group1.trim();
-      lineNumberOffset = match.length;
-      return "";
-    });
+    issue.message = "";
+    issue.source = "perltidy";
+    issue.severity = IssueSeverity.Error;
 
-    if (line.trim() === "") {
-      continue;
-    }
+    const lines = errorText.split("\n");
+    let offset = 0;
+    let lineNumberOffset = 0;
+    let ellipseOffset = 0;
+    let lineNumber = null;
+    const lineNumberRegex = /^\s*(\d+):/s;
+    const truncatedLeadingErrorLineRegex = /^\s*\.\.\.\s/;
+    const truncatedTrailingErrorLineRegex = /\s*\.\.\.$/;
+    const onlyDashesAndCaretRegex = /^\s*[-]+[\^]$/;
+    const onlyCaretRegex = /^[\s^]+$/;
 
-    let nextLine = i + 1 < lines.length ? lines[i + 1] : null;
-    let skipLineContent = false;
-
-    // if the next line has a caret this line is just a piece of code we can already see in the editor and not error text
-    // the next line with the caret points to the problem code
-    if (nextLine && nextLine.indexOf("^") !== -1) {
-      skipLineContent = true;
-    }
-
-    if (onlyDashesAndCaretRegex.test(line)) {
-      let start = line.indexOf("-");
-      let end = line.indexOf("^");
-      if (offset !== -1) {
-        // Account for the line number we removed from line [lineNumber: ... ]
-        offset = offset - lineNumberOffset;
-        if (offset > 0) {
-          offset = offset - ellipseOffset;
-        }
-        start = offset + start;
-        end = offset + end;
-      }
-      issue.column = start;
-      issue.endColumn = end;
-      continue;
-    }
-
-    if (onlyCaretRegex.test(line)) {
-      let caretPosition = line.indexOf("^");
-      if (caretPosition !== -1) {
-        offset = offset - lineNumberOffset;
-        if (offset > 0) {
-          offset = offset - ellipseOffset;
-        }
-        issue.column = caretPosition + offset;
+    for (let i = 0; i < lines.length; i++) {
+      // If there is no : this is not from perltidy and probably a perl warning about something unrelated
+      if (!lines[i].includes(":")) {
         continue;
       }
-    }
+      // not helpful, usually after a single line has already given 2 errors
+      if (lines[i].includes("Giving up after error")) {
+        return null;
+      }
 
-    line = line.trim();
+      // remove filename from error lines
+      let line = lines[i].replace("<stdin>:", "");
 
-    if (lineNumber) {
-      issue.line = lineNumber;
-      // perltidy will sometimes truncate the line containing specific code if it is long. ex:
-      // 33: ... cessful logins for $domain" } );
-      //                            -------^
-      // since we rely on the index of the caret to get the correct column number, we need to figure out
-      // the offset of what perltidy has removed above. We already recorded the entire file from stdout, so look up
-      // this specific line number and see where the code we can see starts and consider that the offset
+      // remove line numbers
+      line = line.replace(lineNumberRegex, function (match, group1) {
+        lineNumber = group1.trim();
+        lineNumberOffset = match.length;
+        return "";
+      });
 
-      if (truncatedLeadingErrorLineRegex.test(line)) {
-        let searchText = line.replace(
-          truncatedLeadingErrorLineRegex,
-          function (match) {
-            ellipseOffset = match.length;
-            return "";
+      if (line.trim() === "") {
+        continue;
+      }
+
+      const nextLine = i + 1 < lines.length ? lines[i + 1] : null;
+      let skipLineContent = false;
+
+      // if the next line has a caret this line is just a piece of code we can already see in the editor and not error text
+      // the next line with the caret points to the problem code
+      if (nextLine && nextLine.indexOf("^") !== -1) {
+        skipLineContent = true;
+      }
+
+      if (onlyDashesAndCaretRegex.test(line)) {
+        let start = line.indexOf("-");
+        let end = line.indexOf("^");
+        if (offset !== -1) {
+          // Account for the line number we removed from line [lineNumber: ... ]
+          offset = offset - lineNumberOffset;
+          if (offset > 0) {
+            offset = offset - ellipseOffset;
           }
-        );
-        // long lines might have a trailing ... as well, but we don't want or need that
-        searchText.replace(truncatedTrailingErrorLineRegex, "");
-        let originalLineText = getContentsFromLine(lineNumber, text);
-        offset = originalLineText.indexOf(searchText);
-      }
-
-      if (skipLineContent) {
+          start = offset + start;
+          end = offset + end;
+        }
+        issue.column = start;
+        issue.endColumn = end;
         continue;
       }
 
-      issue.message = issue.message + line;
+      if (onlyCaretRegex.test(line)) {
+        const caretPosition = line.indexOf("^");
+        if (caretPosition !== -1) {
+          offset = offset - lineNumberOffset;
+          if (offset > 0) {
+            offset = offset - ellipseOffset;
+          }
+          issue.column = caretPosition + offset;
+          continue;
+        }
+      }
+
+      line = line.trim();
+
+      if (lineNumber) {
+        issue.line = lineNumber;
+        // perltidy will sometimes truncate the line containing specific code if it is long. ex:
+        // 33: ... cessful logins for $domain" } );
+        //                            -------^
+        // since we rely on the index of the caret to get the correct column number, we need to figure out
+        // the offset of what perltidy has removed above. We already recorded the entire file from stdout, so look up
+        // this specific line number and see where the code we can see starts and consider that the offset
+
+        if (truncatedLeadingErrorLineRegex.test(line)) {
+          const searchText = line.replace(
+            truncatedLeadingErrorLineRegex,
+            function (match) {
+              ellipseOffset = match.length;
+              return "";
+            }
+          );
+          // long lines might have a trailing ... as well, but we don't want or need that
+          searchText.replace(truncatedTrailingErrorLineRegex, "");
+          const originalLineText = this.getContentsFromLine(lineNumber, text);
+          offset = originalLineText.indexOf(searchText);
+        }
+
+        if (skipLineContent) {
+          continue;
+        }
+
+        issue.message = issue.message + line;
+      }
     }
-  }
 
-  if (issue.line) {
-    if (issue.message === "") {
-      issue.message = "Unknown error";
+    if (issue.line) {
+      if (issue.message === "") {
+        issue.message = "Unknown error";
+      }
+      return issue;
+    } else {
+      return null;
     }
-    return issue;
-  } else {
-    return null;
-  }
-}
+  },
 
-function splitErrors(errorText) {
-  let lines = errorText.split("\n");
-  let blocks = [];
-  let currentBlock = "";
-  let lineNumberPattern = /^<stdin>*:\s?(\d+):/;
+  splitErrors: function (errorText) {
+    const lines = errorText.split("\n");
+    const blocks = [];
+    let currentBlock = "";
+    const lineNumberPattern = /^<stdin>*:\s?(\d+):/;
 
-  for (let line of lines) {
-    if (lineNumberPattern.test(line)) {
+    for (const line of lines) {
+      if (lineNumberPattern.test(line)) {
+        blocks.push(currentBlock.trim());
+        currentBlock = "";
+      }
+      currentBlock += line + "\n";
+    }
+    if (currentBlock !== "") {
       blocks.push(currentBlock.trim());
-      currentBlock = "";
     }
-    currentBlock += line + "\n";
-  }
-  if (currentBlock !== "") {
-    blocks.push(currentBlock.trim());
-  }
-  return blocks;
+    return blocks;
+  },
+
+  clearIssues: function() {
+    this.collection.clear();
+    nova.notifications.cancel("perltidy");
+  },
+
+  addIssues: function(uri, issues) {
+    this.collection.set(uri, issues);
+    notify("Error while formatting, check issues pane");
+  },
+
 }

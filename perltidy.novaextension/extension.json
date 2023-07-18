@@ -3,7 +3,7 @@
   "name": "Perltidy",
   "organization": "Isla Waters",
   "description": "Format perl files with perltidy",
-  "version": "1.3",
+  "version": "1.4",
   "categories": ["commands", "formatters"],
   "repository": "https://github.com/mrsdizzie/nova-perltidy",
   "bugs": "https://github.com/mrsdizzie/nova-perltidy/issues",
