@@ -1,3 +1,7 @@
+## Version 1.6
+
+Add support for per workspace settings
+
 ## Version 1.5
 
 Remove command-palette option in favor of the single Editor menu option which also shows up in the command palette.

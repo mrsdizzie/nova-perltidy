@@ -1,54 +1,139 @@
 let commandRegister = null;
-let perltidyExecutable = nova.config.get("com.mrsdizzie.perltidyExecPath");
-let perltidyArgs = nova.config.get("com.mrsdizzie.perltidyArgs");
-let formatOnSave = nova.config.get("com.mrsdizzie.perltidyRunOnSave");
+
+function isWorkspace() {
+  if (nova.workspace.path == undefined || nova.workspace.path == null) {
+    return false;
+  }
+  return true;
+}
+
+let perltidyExecutable;
+let perltidyArgs;
+let formatOnSave;
+
+if (isWorkspace()) {
+  switch (nova.workspace.config.get('com.mrsdizzie.pertidy.workspace-perltidyRunOnSave')) {
+    case 'Global':
+      formatOnSave = nova.config.get('com.mrsdizzie.perltidyRunOnSave');
+      break;
+    case 'Disable':
+      formatOnSave = false;
+      break;
+    case 'Enable':
+      formatOnSave = true;
+      break;
+    default:
+      formatOnSave = nova.config.get('com.mrsdizzie.perltidyRunOnSave');
+  }
+} else {
+  formatOnSave = nova.config.get('com.mrsdizzie.perltidyRunOnSave');
+}
+
+perltidyExecutable = isWorkspace
+  ? nova.workspace.config.get('com.mrsdizzie.pertidy.workspace-perltidyRunOnSave') ||
+    nova.config.get('com.mrsdizzie.perltidyExecPath')
+  : nova.config.get('com.mrsdizzie.perltidyExecPath');
+
+perltidyArgs = isWorkspace
+  ? nova.workspace.config.get('com.mrsdizzie.pertidy.workspace-perltidyArgs') ||
+    nova.config.get('com.mrsdizzie.perltidyArgs')
+  : nova.config.get('com.mrsdizzie.perltidyArgs');
 
 let parsedPerltidyArgs = [];
 if (perltidyArgs) {
-  parsedPerltidyArgs = perltidyArgs.split(" ");
+  parsedPerltidyArgs = perltidyArgs.split(' ');
 } else {
   // print to stderr (for issue capture) if no default is set
-  parsedPerltidyArgs.push("-se");
+  parsedPerltidyArgs.push('-se');
 }
 
-const pertidyIssueCollection = new IssueCollection("perltidy");
+const pertidyIssueCollection = new IssueCollection('perltidy');
 
 const notify = (body) => {
-  const request = new NotificationRequest("perltidy");
-  request.title = nova.localize("perltidy");
+  const request = new NotificationRequest('perltidy');
+  request.title = nova.localize('perltidy');
   request.body = nova.localize(body);
   nova.notifications.add(request);
 };
 
 const observablePerltidyExecPath = nova.config.observe(
-  "com.mrsdizzie.perltidyExecPath",
+  'com.mrsdizzie.perltidyExecPath',
   (newPerltidyExecutable) => {
     perltidyExecutable = newPerltidyExecutable;
   }
 );
 
 const observablePerltidyArgs = nova.config.observe(
-  "com.mrsdizzie.perltidyArgs",
+  'com.mrsdizzie.perltidyArgs',
   (newPerltidyArgs) => {
     perltidyArgs = newPerltidyArgs;
   }
 );
 
 const observableFormatOnSave = nova.config.observe(
-  "com.mrsdizzie.perltidyRunOnSave",
+  'com.mrsdizzie.perltidyRunOnSave',
   (newValue) => {
     formatOnSave = newValue ? true : false;
   }
 );
 
+let observableWorkspaceFormatOnSave;
+let observableWorkspacePerltidyArgs;
+let observableWorkspacePerltidyExecPath;
+
+if (isWorkspace()) {
+  observableWorkspaceFormatOnSave = nova.workspace.config.observe(
+    'com.mrsdizzie.workspace-perltidyRunOnSave',
+    (newValue) => {
+      switch (newValue) {
+        case 'Global':
+          formatOnSave = nova.config.get('com.mrsdizzie.perltidyRunOnSave');
+          break;
+        case 'Disable':
+          formatOnSave = false;
+          break;
+        case 'Enable':
+          formatOnSave = true;
+          break;
+        default:
+          formatOnSave = nova.config.get('com.mrsdizzie.perltidyRunOnSave');
+      }
+    }
+  );
+
+  observableWorkspacePerltidyArgs = nova.workspace.config.observe(
+    'com.mrsdizzie.workspace-perltidyArgs',
+    (newPerltidyArgs) => {
+      if (!newPerltidyArgs) {
+        perltidyArgs = nova.config.get('com.mrsdizzie.perltidyArgs');
+      } else {
+        perltidyArgs = newPerltidyArgs;
+      }
+    }
+  );
+
+  observableWorkspacePerltidyExecPath = nova.workspace.config.observe(
+    'com.mrsdizzie.workspace-perltidyExecPath',
+    (newPerltidyExecutable) => {
+      if (!newPerltidyExecutable) {
+        perltidyExecutable = nova.config.get('com.mrsdizzie.perltidyExecPath');
+      } else {
+        perltidyExecutable = newPerltidyExecutable;
+      }
+    }
+  );
+}
+
 exports.activate = function () {
-  commandRegister = nova.commands.register("perltidy.run", (workspace) => {
+  commandRegister = nova.commands.register('perltidy.run', (workspace) => {
     tidy(workspace);
   });
 
   nova.workspace.onDidAddTextEditor((editor) => {
     editor.onWillSave((editor) => {
-      if (! formatOnSave) return;
+      if (!formatOnSave) {
+        return;
+      }
 
       const documentSpan = new Range(0, editor.document.length);
       const unformattedText = editor.document.getTextInRange(documentSpan);
@@ -56,10 +141,7 @@ exports.activate = function () {
       return applyFormattingAndProcessErrors(editor, documentSpan, unformattedText);
     });
   });
-
 };
-
-
 
 exports.deactivate = function () {
   observablePerltidyExecPath && observablePerltidyExecPath.dispose();
@@ -67,13 +149,16 @@ exports.deactivate = function () {
   observablePerltidyArgs && observablePerltidyArgs.dispose();
   observableFormatOnSave && observableFormatOnSave.dispose();
   pertidyIssueCollection && pertidyIssueCollection.dispose();
+  observableWorkspaceFormatOnSave && observableWorkspaceFormatOnSave.dispose();
+  observableWorkspacePerltidyArgs && observableWorkspacePerltidyArgs.dispose();
+  observableWorkspacePerltidyExecPath && observableWorkspacePerltidyExecPath.dispose();
 };
 
 function tidy(workspace) {
   // If not set, we are run from the editor menu which has a slightly different context
   const currentEditor = workspace.activeTextEditor || workspace;
 
-  let unformattedText = "";
+  let unformattedText = '';
   let rangeToReplace = null;
   let isSelection = false;
 
@@ -86,12 +171,17 @@ function tidy(workspace) {
     unformattedText = currentEditor.document.getTextInRange(rangeToReplace);
   }
 
-  return applyFormattingAndProcessErrors(currentEditor, rangeToReplace, unformattedText, isSelection);
+  return applyFormattingAndProcessErrors(
+    currentEditor,
+    rangeToReplace,
+    unformattedText,
+    isSelection
+  );
 }
 
 const formatText = (unformattedText, isSelection = false) => {
   if (!perltidyExecutable) {
-    nova.workspace.showErrorMessage("Configure perltidy before running");
+    nova.workspace.showErrorMessage('Configure perltidy before running');
     return;
   }
   const writeToStdin = (process, unformattedText) => {
@@ -100,7 +190,7 @@ const formatText = (unformattedText, isSelection = false) => {
       writer.write(unformattedText);
       writer.close();
     });
-  }
+  };
 
   const collectOutputText = (stdout, buffer) => (buffer.stdout += stdout);
   const collectErrorText = (stderr, buffer) => (buffer.stderr += stderr);
@@ -108,7 +198,7 @@ const formatText = (unformattedText, isSelection = false) => {
   const localPerltidyArgs = [...parsedPerltidyArgs];
   if (isSelection) {
     // Don't add a newline at the end of a selection
-    localPerltidyArgs.push("-natnl");
+    localPerltidyArgs.push('-natnl');
   }
 
   return new Promise((resolve, reject) => {
@@ -116,7 +206,7 @@ const formatText = (unformattedText, isSelection = false) => {
       const process = new Process(perltidyExecutable, {
         args: localPerltidyArgs,
       });
-      const buffer = { stdout: "", stderr: "" };
+      const buffer = { stdout: '', stderr: '' };
 
       process.onStdout((stdout) => collectOutputText(stdout, buffer));
       process.onStderr((stderr) => collectErrorText(stderr, buffer));
@@ -126,7 +216,7 @@ const formatText = (unformattedText, isSelection = false) => {
         } else {
           reject({
             stderr: buffer.stderr,
-            stdout: buffer.stdout
+            stdout: buffer.stdout,
           });
         }
       });
@@ -134,13 +224,19 @@ const formatText = (unformattedText, isSelection = false) => {
       writeToStdin(process, unformattedText);
       process.start();
     } catch (err) {
+      notify(err.toString());
       reject(err);
     }
   });
-}
+};
 
-function applyFormattingAndProcessErrors(editor, rangeToReplace, unformattedText, isSelection = false) {
-  if (!editor.document.syntax.includes("perl")) return;
+function applyFormattingAndProcessErrors(
+  editor,
+  rangeToReplace,
+  unformattedText,
+  isSelection = false
+) {
+  if (!editor.document.syntax.includes('perl')) return;
   return formatText(unformattedText, isSelection)
     .then((formattedText) => {
       editor.edit((edit) => edit.replace(rangeToReplace, formattedText));
@@ -154,12 +250,10 @@ function applyFormattingAndProcessErrors(editor, rangeToReplace, unformattedText
     });
 }
 
-
 const IssueManager = {
+  collection: new IssueCollection('perltidy'),
 
-  collection: new IssueCollection("perltidy"),
-
-  generate: function(errorText, stdin) {
+  generate: function (errorText, stdin) {
     const issues = [];
     const errors = this.splitErrors(errorText);
     errors.forEach((error) => {
@@ -172,25 +266,25 @@ const IssueManager = {
     return issues;
   },
 
-  getContentsFromLine: function(lineNum, text) {
-    const eol = nova.workspace.activeTextEditor.document.eol || "\n";
+  getContentsFromLine: function (lineNum, text) {
+    const eol = nova.workspace.activeTextEditor.document.eol || '\n';
     const line = text.split(eol)[lineNum - 1];
     return line;
   },
 
-   createFromError: function(errorText, text) {
+  createFromError: function (errorText, text) {
     // these errors aren't helpful don't create issues for them
-    if (errorText.includes("To save a full .LOG")) {
+    if (errorText.includes('To save a full .LOG')) {
       return null;
     }
 
     const issue = new Issue();
 
-    issue.message = "";
-    issue.source = "perltidy";
+    issue.message = '';
+    issue.source = 'perltidy';
     issue.severity = IssueSeverity.Error;
 
-    const lines = errorText.split("\n");
+    const lines = errorText.split('\n');
     let offset = 0;
     let lineNumberOffset = 0;
     let ellipseOffset = 0;
@@ -203,25 +297,25 @@ const IssueManager = {
 
     for (let i = 0; i < lines.length; i++) {
       // If there is no : this is not from perltidy and probably a perl warning about something unrelated
-      if (!lines[i].includes(":")) {
+      if (!lines[i].includes(':')) {
         continue;
       }
       // not helpful, usually after a single line has already given 2 errors
-      if (lines[i].includes("Giving up after error")) {
+      if (lines[i].includes('Giving up after error')) {
         return null;
       }
 
       // remove filename from error lines
-      let line = lines[i].replace("<stdin>:", "");
+      let line = lines[i].replace('<stdin>:', '');
 
       // remove line numbers
       line = line.replace(lineNumberRegex, function (match, group1) {
         lineNumber = group1.trim();
         lineNumberOffset = match.length;
-        return "";
+        return '';
       });
 
-      if (line.trim() === "") {
+      if (line.trim() === '') {
         continue;
       }
 
@@ -230,13 +324,13 @@ const IssueManager = {
 
       // if the next line has a caret this line is just a piece of code we can already see in the editor and not error text
       // the next line with the caret points to the problem code
-      if (nextLine && nextLine.indexOf("^") !== -1) {
+      if (nextLine && nextLine.indexOf('^') !== -1) {
         skipLineContent = true;
       }
 
       if (onlyDashesAndCaretRegex.test(line)) {
-        let start = line.indexOf("-");
-        let end = line.indexOf("^");
+        let start = line.indexOf('-');
+        let end = line.indexOf('^');
         if (offset !== -1) {
           // Account for the line number we removed from line [lineNumber: ... ]
           offset = offset - lineNumberOffset;
@@ -252,7 +346,7 @@ const IssueManager = {
       }
 
       if (onlyCaretRegex.test(line)) {
-        const caretPosition = line.indexOf("^");
+        const caretPosition = line.indexOf('^');
         if (caretPosition !== -1) {
           offset = offset - lineNumberOffset;
           if (offset > 0) {
@@ -275,15 +369,12 @@ const IssueManager = {
         // this specific line number and see where the code we can see starts and consider that the offset
 
         if (truncatedLeadingErrorLineRegex.test(line)) {
-          const searchText = line.replace(
-            truncatedLeadingErrorLineRegex,
-            function (match) {
-              ellipseOffset = match.length;
-              return "";
-            }
-          );
+          const searchText = line.replace(truncatedLeadingErrorLineRegex, function (match) {
+            ellipseOffset = match.length;
+            return '';
+          });
           // long lines might have a trailing ... as well, but we don't want or need that
-          searchText.replace(truncatedTrailingErrorLineRegex, "");
+          searchText.replace(truncatedTrailingErrorLineRegex, '');
           const originalLineText = this.getContentsFromLine(lineNumber, text);
           offset = originalLineText.indexOf(searchText);
         }
@@ -297,8 +388,8 @@ const IssueManager = {
     }
 
     if (issue.line) {
-      if (issue.message === "") {
-        issue.message = "Unknown error";
+      if (issue.message === '') {
+        issue.message = 'Unknown error';
       }
       return issue;
     } else {
@@ -307,32 +398,31 @@ const IssueManager = {
   },
 
   splitErrors: function (errorText) {
-    const lines = errorText.split("\n");
+    const lines = errorText.split('\n');
     const blocks = [];
-    let currentBlock = "";
+    let currentBlock = '';
     const lineNumberPattern = /^<stdin>*:\s?(\d+):/;
 
     for (const line of lines) {
       if (lineNumberPattern.test(line)) {
         blocks.push(currentBlock.trim());
-        currentBlock = "";
+        currentBlock = '';
       }
-      currentBlock += line + "\n";
+      currentBlock += line + '\n';
     }
-    if (currentBlock !== "") {
+    if (currentBlock !== '') {
       blocks.push(currentBlock.trim());
     }
     return blocks;
   },
 
-  clearIssues: function() {
+  clearIssues: function () {
     this.collection.clear();
-    nova.notifications.cancel("perltidy");
+    nova.notifications.cancel('perltidy');
   },
 
-  addIssues: function(uri, issues) {
+  addIssues: function (uri, issues) {
     this.collection.set(uri, issues);
-    notify("Error while formatting, check issues pane");
+    notify('Error while formatting, check issues pane');
   },
-
-}
+};

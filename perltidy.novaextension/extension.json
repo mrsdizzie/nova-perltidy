@@ -3,7 +3,7 @@
   "name": "Perltidy",
   "organization": "Isla Waters",
   "description": "Format perl files with perltidy",
-  "version": "1.5",
+  "version": "1.6",
   "categories": ["commands", "formatters"],
   "repository": "https://github.com/mrsdizzie/nova-perltidy",
   "bugs": "https://github.com/mrsdizzie/nova-perltidy/issues",
@@ -14,7 +14,10 @@
     "process": true
   },
 
-  "activationEvents": ["onLanguage:perl"],
+  "activationEvents": [
+    "onLanguage:perl",
+    "onLanguage:perl+treesitter"
+  ],
 
   "commands": {
     "editor": [
@@ -57,5 +60,37 @@
         }
       ]
     }
+  ], 
+  
+  "config-workspace": [ 
+    {
+      "title": "perltidy Preferences",
+      "description": "Configure perltidy behaviors",
+      "type": "section",
+      "children": [
+        {
+          "key": "com.mrsdizzie.workspace-perltidyRunOnSave",
+          "title": "Run on save",
+          "type": "enum",
+          "values": ["Global", "Enable", "Disable"],
+          "default": "Global"
+        },
+        {
+          "key": "com.mrsdizzie.workspace-perltidyExecPath",
+          "title": "Executable Path",
+          "type": "path",
+          "description": "Manually set the fully qualified path for the perltidy executable.",
+          "placeholder": "/opt/homebrew/bin/perltidy"
+        },
+        {
+          "key": "com.mrsdizzie.workspace-perltidyArgs",
+          "title": "CLI arguments",
+          "description": "Use `perltidy --help` for a full list of arguments. Printing to stdin and stdout is required for modifying the current document in place and generating issues. Any options that disable those will alter the behavior of this extension",
+          "type": "string",
+          "placeholder": "--perl-best-practices"
+        }
+      ]
+    }
   ]
+
 }
