@@ -1,3 +1,7 @@
+## Version 1.7
+
+Bugfix: Configuration changes weren't applied immediately in some cases
+
 ## Version 1.6
 
 Add support for per workspace settings

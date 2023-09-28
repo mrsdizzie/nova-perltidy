@@ -39,14 +39,6 @@ perltidyArgs = isWorkspace
     nova.config.get('com.mrsdizzie.perltidyArgs')
   : nova.config.get('com.mrsdizzie.perltidyArgs');
 
-let parsedPerltidyArgs = [];
-if (perltidyArgs) {
-  parsedPerltidyArgs = perltidyArgs.split(' ');
-} else {
-  // print to stderr (for issue capture) if no default is set
-  parsedPerltidyArgs.push('-se');
-}
-
 const pertidyIssueCollection = new IssueCollection('perltidy');
 
 const notify = (body) => {
@@ -195,7 +187,17 @@ const formatText = (unformattedText, isSelection = false) => {
   const collectOutputText = (stdout, buffer) => (buffer.stdout += stdout);
   const collectErrorText = (stderr, buffer) => (buffer.stderr += stderr);
 
+  let parsedPerltidyArgs = [];
+
+  if (perltidyArgs) {
+    parsedPerltidyArgs = perltidyArgs.split(' ');
+  } else {
+    // print to stderr (for issue capture) if no default is set
+    parsedPerltidyArgs.push('-se');
+  }
+
   const localPerltidyArgs = [...parsedPerltidyArgs];
+
   if (isSelection) {
     // Don't add a newline at the end of a selection
     localPerltidyArgs.push('-natnl');
